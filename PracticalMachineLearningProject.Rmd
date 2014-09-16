@@ -11,11 +11,11 @@ output: html_document
 The goal of this study is to predict the manner in which people do their exercises. Based on a set of records we are going to study the way they are training by developing a model using the Random Forest approach. The dataset contains 160 variables. One of them, called "classe" is the target to predict and the others 159 are going to be analysed in order to determine whether or not they are useful for our model purpose (predictors).
 
 
-## Data Analysis
-```{r}
+## Data Analysis Approach
+```{r Setup}
 # Load required libraries
-## Load caret package
-library(caret)
+library(caret) # Load caret package
+library(randomForest) # Load randomForest package
 ```
 
 We have two data sets located in ./data sub directory: 
@@ -33,7 +33,8 @@ dim(training)
 
 The target variable (classe) is a categorical variable and has five different values (A, B, C, D, E) denoting how the participants performed one of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E). (For more details on the study background and data collection, see http://groupware.les.inf.puc-rio.br/har).
 
-Given the large width (number of columns) in the data set, we can work to reduce the data set to a more manageable collection without impacting the robustness of the data themselves. By analyzing the columns in the training data set, we determined the following columns could be removed from our model based on a `summary(training)` function:
+### Training Set Variable Analysis and Cleansing
+Given the large width (total variables = 160) in the data set, we can work to reduce the data set to a more manageable collection without impacting the robustness of the data themselves. By analyzing the columns in the training data set, we determined the following columns could be removed from our model based on a `summary(training)` function:
 
 * Variable "X" (column 1) appears to be a somple rowstamp that provides no value for model prediction
 * Variable "user-name" (column 2) simply captures the inidividual subject performing the activities and provides no value for model prediction
@@ -80,4 +81,34 @@ dim(training)
 ```
 
 At this point we have reduced our training data set removing unnecessary variables resulting in a remaining variable set of 54.
+
+### Principal Components Analysis (PCA)
+
+We next find the correlated predictors using doing a principal components analysis (PCA) on the training data set.
+
+```{r echo=TRUE}
+
+# Create a correlated matrix with all variables except our "classe" (outcome) 
+# variable
+correlated <- abs(cor(training[, -54]))
+diag(correlated) <- 0 # All variables have a correlation of 1 with themselves
+correlated <- which(correlated > 0.8, arr.ind=T)
+
+length(unique(sort(correlated)))
+
+```
+
+Based on the correlation matrix, there are correlated variables (22). Our model, based on a Random Forest approach, will decide what are the best predictors for our target, so it is not necessary to make combinations of the initial variables.
+
+### Cross-Validation Application
+Using Cross-Validation techniques and the large training data set population (~20,000), we sampled our training data set in two new data sets for testing our Random Forest model approach. We established a new training data set (newtrain) and a new test data set (newtest) using a 20% sampling from the cleaned training data set.
+
+```{r}
+
+# Get training sample (20% of the total training dataset size)
+inTrain <- createDataPartition(y = training$classe, p=0.2, list=FALSE)
+newtrain <- training[inTrain, ]
+newtest <- training[-inTrain, ]
+
+```
 
