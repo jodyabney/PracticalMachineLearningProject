@@ -1,0 +1,83 @@
+---
+title: "PracticalMachineLearningProject"
+author: "Jody P. Abney"
+date: "August 26, 2014"
+output: html_document
+---
+
+## Executive Summary
+**Reword** Actually, people love to record all the training they do, using their smartphones. So there are a lot of useful data that can provide very smart information about the way they are doing exercises.
+
+The goal of this study is to predict the manner in which people do their exercises. Based on a set of records we are going to study the way they are training by developing a model using the Random Forest approach. The dataset contains 160 variables. One of them, called "classe" is the target to predict and the others 159 are going to be analysed in order to determine whether or not they are useful for our model purpose (predictors).
+
+
+## Data Analysis
+```{r}
+# Load required libraries
+## Load caret package
+library(caret)
+```
+
+We have two data sets located in ./data sub directory: 
+
+* "pml-training.csv" (training data set)
+* "pml.testing.csv" (testing data set)
+
+```{r}
+# Read training and testing data sets
+training <- read.csv("./data/pml-training.csv", sep=",", header=TRUE)
+testing <- read.csv("./data/pml-testing.csv", sep=",", header=TRUE)
+
+dim(training)
+```
+
+The target variable (classe) is a categorical variable and has five different values (A, B, C, D, E) denoting how the participants performed one of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E). (For more details on the study background and data collection, see http://groupware.les.inf.puc-rio.br/har).
+
+Given the large width (number of columns) in the data set, we can work to reduce the data set to a more manageable collection without impacting the robustness of the data themselves. By analyzing the columns in the training data set, we determined the following columns could be removed from our model based on a `summary(training)` function:
+
+* Variable "X" (column 1) appears to be a somple rowstamp that provides no value for model prediction
+* Variable "user-name" (column 2) simply captures the inidividual subject performing the activities and provides no value for model prediction
+* Variable "raw_timestamp_part_1" (column 3) is a timestamp value and provides no value for model prediction
+* Variable "raw_timestamp_part_2" (column 4) is a timestamp value and provides no value for model prediction
+* Variable "cvtd_timestamp" (column 5) is a datetime value and provides no value for model prediction
+* Variable "new_window" (column 6) is heavily skewed toward "no" values (~97.9%) and provides little value for model prediction
+
+```{r, echo=TRUE}
+training <- training[, -c(1, 2, 3, 4, 5, 6)]
+```
+
+A large presence of "NA" values were also observed in the `summary(training)` results. Given the prevelance of the "NA" values, we devise an approach to ignore (remove) the variables with "NA" value populations greater than the "benchmark/cutoff." We arbitarily choose a "benchmark/cutoff" of 20% (i.e. variables having an "NA" value population greater than 20% will not be included in the model).
+
+```{r echo=TRUE, warning=FALSE}
+
+cols <- ncol(training) # Get the number of columns
+rows <- nrow(training) # Get the number of rows
+
+# Define an array with the column ids to delete from the training data set
+delete_col <- c()
+
+# Calculate the number of NA values for each column except "classe" column (our 
+# outcome variable which is the last column in the data set)
+for( i in 1:cols-1){
+    
+    # Get number of NA values for the current column
+    tmp <- nrow(training[is.na(as.numeric(as.character(training[, i]))), ])
+    
+    # Apply our arbtary benchmark/cutoff of 20% NA population in  a variable
+    # based on the assumption that such as vairable would result in that 
+    # variable being a bad predictor input for the model. Log the column
+    # number in the "delete_col" array.
+    if(tmp > round(0.20 * rows, 0)){
+        delete_col <- c(delete_col, i)
+        }   
+    }
+
+# Create a new datset without all the columns that have more than 
+# 20% population of NA values
+training <- training[, -delete_col]
+
+dim(training)
+```
+
+At this point we have reduced our training data set removing unnecessary variables resulting in a remaining variable set of 54.
+
