@@ -112,3 +112,31 @@ newtest <- training[-inTrain, ]
 
 ```
 
+### Random Forest Approach
+
+```{r echo=TRUE}
+
+# Plot our categorical outcome variable (classe). Can't use a historgram 
+# because the variable isn't numeric
+qplot(classe, data=training3)
+
+# Set seed to repeat the test
+set.seed(999)
+
+# Fit the model using all 53 predictors with a Random Forest method
+modelFit <- train(classe ~ ., data=training3, method="rf", prox=TRUE)
+
+# optimal model with mtry = 28
+print(modelFit)
+
+# See final model
+print(modelFit$finalModel)
+
+# Get the specific selected tree (28)
+selectedTree <- getTree(modelFit$finalModel, k=28)
+
+```
+
+The OOB error rate is 1.02%.
+
+### Test Model with newtest Data Set
