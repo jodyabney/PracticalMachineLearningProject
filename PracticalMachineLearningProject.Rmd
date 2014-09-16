@@ -157,3 +157,15 @@ qplot(predictions, classe, data=newtest)
 
 Based on predictions from our newtest dataset, we observe an Accuracy of 0.982 (98%) confirming our model approach is good to predict our outome variable (classe)
 
+## Test Model Using Orignal "Testing" Data Set
+Finally, we are going to test our model in the original testing dataset (20 rows)
+
+```{r echo=TRUE}
+
+pred <- predict(modelFit, testing)
+
+# B A A A A E D B A A B C B A E E A B B B
+pred
+
+```
+
