@@ -123,20 +123,37 @@ qplot(classe, data=training3)
 # Set seed to repeat the test
 set.seed(999)
 
-# Fit the model using all 53 predictors with a Random Forest method
-modelFit <- train(classe ~ ., data=training3, method="rf", prox=TRUE)
+# Fit the model for our outomce vairable (class) using all 53 predictors 
+# using a Random Forest (rf) method
+modelFit <- train(classe ~ ., data=newtrain, method="rf", prox=TRUE)
 
-# optimal model with mtry = 28
+# optimal model with mtry = 27
 print(modelFit)
 
 # See final model
 print(modelFit$finalModel)
 
-# Get the specific selected tree (28)
-selectedTree <- getTree(modelFit$finalModel, k=28)
+# Get the specific selected tree (27)
+selectedTree <- getTree(modelFit$finalModel, k=27)
 
 ```
 
-The OOB error rate is 1.02%.
+The OOB error rate is 1.63%.
 
 ### Test Model with newtest Data Set
+
+We next used the newtest data set (sampled from our our cleaned training data set to test the model.
+
+```{r echo=TRUE}
+
+predictions <- predict(modelFit, newtest)
+
+confusionMatrix(predictions, newtest$classe)
+
+# Print predictions
+qplot(predictions, classe, data=newtest)
+
+```
+
+Based on predictions from our newtest dataset, we observe an Accuracy of 0.982 (98%) confirming our model approach is good to predict our outome variable (classe)
+
