@@ -1,0 +1,201 @@
+---
+title: "Practical Machine Learning Project: Quality Weight Lifting Prediction"
+author: "Jody P. Abney"
+date: "September 15, 2014"
+output: html_document
+---
+
+## Executive Summary
+The study was designed to predict the quality manner in which people perform certain exercises. Data was collected using accelerometers on the belt, forearm, arm, and dumbbell on six (6) participants. The subjects were asked to perform barbell lifts correctly and incorrectly in five (5) different ways. More information is available from the website here: [http://groupware.les.inf.puc-rio.br/har](http://groupware.les.inf.puc-rio.br/har) (see the section on the Weight Lifting Exercise Data Set). The resulting data set contained 160 variables. The outcome variable `classe` was the target to predict and the other 159 variables were analyzed in order to determine whether or not they were useful for the model accuracy. The reduced data set after analysis consisted of 53 predictors and we utilized a Random Forest model approach resulting in an overall accuracy of 99.9% with a 95% confidence interval of 99.8% to 100%. The Random Forest model was applied to the `testing` data set for the Project Submission and resulted in correct predictions 20 out of 20 observations. 
+
+## Data Analysis Approach
+```{r Setup, echo=FALSE, results='hide'}
+
+# Load required libraries
+library(ggplot2) # Load ggplot2 package
+library(caret) # Load caret package
+library(randomForest) # Load randomForest package
+
+```
+
+We had two data sets located in the "./data/" sub-directory: 
+
+* pml-training.csv (training data set)
+* pml.testing.csv (testing data set)
+
+```{r Read Data, echo=TRUE}
+# Set working sirectory
+setwd("~/Documents/R_Programming/ReproducibleResearch")
+
+# Read training and testing data sets
+training <- read.csv("./data/pml-training.csv") 
+dim(training)
+
+testing <- read.csv("./data/pml-testing.csv") 
+dim(testing)
+
+```
+
+The outcome variable `classe` is a categorical variable and has five different values (A, B, C, D, E) denoting how the participants performed one of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E). (For more details on the study background and data collection, see [http://groupware.les.inf.puc-rio.br/har](http://groupware.les.inf.puc-rio.br/har)).
+
+### Training Set Analysis and Cleansing
+Given the large width (total variables = 160) in the data set, we worked to reduce the data set to a more manageable collection without impacting the robustness of the data themselves. By analyzing the columns (variable populations) using `summary(training)` on the `training` data set, we determined the first six (6) variables could be removed from our model for the following reasons:
+
+* Variable "X" (column 1) was a simple row-stamp that provided no value for model prediction
+* Variable "user-name" (column 2) simply captured the individual subject performing the exercises and provided no value for model prediction
+* Variable "raw_timestamp_part_1" (column 3) was a time-stamp value and provided no value for model prediction
+* Variable "raw_timestamp_part_2" (column 4) was a time-stamp value and provided no value for model prediction
+* Variable "cvtd_timestamp" (column 5) was a date-time value and provided no value for model prediction
+* Variable "new_window" (column 6) was heavily skewed toward "no" values (~97.9%) and provided no value for model prediction
+
+```{r cleanTraining Part 1, echo=TRUE}
+# Create a cleanedTraining data set by starting with training data set and 
+# dropping the first 6 columns (variables)
+cleanedTraining <- training[, -c(1, 2, 3, 4, 5, 6)]
+
+```
+
+A large presence of "NA" values were also observed in the `summary(training)` results. Given the prevalence of the "NA" values, we devised an approach to ignore (remove) the variables with "NA" value populations greater than a "benchmark/cutoff." We arbitrarily chose a "benchmark/cutoff" of 20% (i.e. variables having an "NA" value population greater than 20% would not be included in the model). The 20% benchmark/cutoff was chosen based on "skewing" a variable toward a vast majority (> 80%) of "NA" values which would have no value for model prediction.
+
+```{r cleanedTraining Part 2, echo=TRUE, warning=FALSE}
+
+cols <- ncol(cleanedTraining) # Get the number of columns
+rows <- nrow(cleanedTraining) # Get the number of rows
+
+# Define an array with the column ids to delete from the training data set
+delete_cols <- c()
+
+# Calculate the number of NA values for each column except "classe" column (our 
+# outcome variable which is the last column in the data set)
+for( i in 1:cols-1){
+    
+    # Get the number of NA values for the current column
+    tmp <- nrow(cleanedTraining[is.na(as.numeric(as.character(cleanedTraining[, i]))), ])
+    
+    # Apply our arbtary benchmark/cutoff of 20% NA population in  a variable
+    # based on the assumption that such as vairable would result in that 
+    # variable being a bad predictor input for the model. Log the column
+    # number in the "delete_cols" array.
+    if(tmp > round(0.20 * rows, 0)){
+        delete_cols <- c(delete_cols, i)
+        }   
+    }
+
+# Update the cleanedTraining data set by removing all the columns with more than 
+# 20% population of NA values
+cleanedTraining <- cleanedTraining[, -delete_cols]
+
+dim(cleanedTraining)
+```
+
+At this point, we had reduced the training data set `cleanedTraining` by removing unnecessary variables resulting to a resulting data set of 54 total variables (53 predictors and 1 outcome).
+
+### Principal Components Analysis (PCA)
+
+Next, we found the correlated predictors using doing a principal components analysis (PCA) on the `cleanedTraining` data set.
+
+```{r PCA with Correlation Matrix, echo=TRUE}
+
+# Create a correlated matrix with all variables except our "classe" (outcome) 
+# variable
+correlated <- abs(cor(cleanedTraining[, -54]))
+diag(correlated) <- 0 # All variables have a correlation of 1 with themselves
+correlated <- which(correlated > 0.8, arr.ind=T)
+
+length(unique(sort(correlated)))
+```
+
+Based on the correlation matrix, there were twenty-two (22) correlated variables in the `cleanedTraining` data set. Our Random Forest model was used to determine the best predictors for our outcome variable `classe`.
+
+### Cross-Validation Application
+Using Cross-Validation techniques on the large training data set population (~20,000), we sampled the `cleanedTraining` data set into two new data sets for testing our Random Forest model approach. We established a new training data set `newTrain` and a new test data set `crossVal` using a 70% sampling from the `cleanedTraining` data set.
+
+```{r Cross-Validation}
+
+# Set the seed
+set.seed(999)
+
+# Get training sample (70% of the total training dataset size)
+inTrain <- createDataPartition(y = cleanedTraining$classe, p=0.7, list=FALSE)
+newTrain <- cleanedTraining[inTrain, ]
+crossVal <- cleanedTraining[-inTrain, ]
+
+```
+
+### Random Forest Approach
+
+```{r Random Forest, echo=TRUE, cache=TRUE}
+
+# Plot our categorical outcome variable (classe). Can't use a historgram 
+# because the variable isn't numeric.
+qplot(classe, data=newTrain, main="Histogram of newTrain$classe")
+
+# Fit the model for our outomce variable (class) using all 53 predictors via
+# a Random Forest (rf) method
+myTrainControl <- trainControl(method="cv", number=4) # Set up a 4-fold control
+modelFit <- train(newTrain$classe ~ ., 
+                  data=newTrain, 
+                  method="rf", 
+                  prox=TRUE, 
+                  trControl = myTrainControl)
+print(modelFit)
+
+# See final model
+print(modelFit$finalModel)
+
+# Plot RF model
+plot(modelFit, main="Random Forest Model")
+
+# Get the specific selected tree (27)
+selectedTree <- getTree(modelFit$finalModel, k=27)
+
+# Print the summary of the selected tree
+summary(selectedTree)
+
+```
+
+### Test the Model Using crossVal Data Set
+
+We then used the `crossVal` data set (sampled from our `cleanedTraining` data set) to test our Random Forest model.
+
+```{r newTest Validation, echo=TRUE}
+
+predictions <- predict(modelFit, crossVal)
+
+confusionMatrix(predictions, crossVal$classe)
+
+# Plot predictions vs crossVal$classe
+qplot(predictions, classe, data=crossVal)
+
+```
+
+Based on predictions from our `crossVal` data set, we observed an overall accuracy of 0.999 (99.9%) with a 95% Confidence Interval (0.998, 1) confirming our model approach was indeed accurate in predicting our outcome variable `classe`.
+
+## Apply Model to Original "Testing" Data Set
+Finally, we tested our model on the original `testing` data set (20 rows/observations)
+
+```{r Original Test Validation, echo=TRUE}
+
+answers <- predict(modelFit, testing)
+
+answers
+
+```
+
+### Generate Answer Text Files for Project Submission
+```{r Write answer files, echo=TRUE}
+# Set working sirectory
+setwd("~/Documents/R_Programming/ReproducibleResearch/data/answers")
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(answers)
+```
+
+Our Random Forest model correctly predicted 20 of 20 outcomes for the project submission.
